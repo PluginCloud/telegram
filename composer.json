@@ -1,0 +1,29 @@
+{
+    "name": "plugin-cloud/telegram",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "tingfeng-key",
+            "email": "1770963469@qq.com"
+        }
+    ],
+    "require": {
+        "aurimasniekis/ffi-tdlib": "1.0.0",
+        "aurimasniekis/tdlib-schema": "1.6.0"
+    },
+    "repositories": [
+        {
+            "type": "package",
+            "package": {
+                "name": "aurimasniekis/tdlib-schema",
+                "version": "v1.6.0",
+                "source": {
+                    "url": "https://github.com/PluginCloud/tdlib-schema.git",
+                    "type": "git",
+                    "reference": "3875657"
+                }
+            }
+        }
+    ]
+}
