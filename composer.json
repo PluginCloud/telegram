@@ -1,5 +1,6 @@
 {
     "name": "plugin-cloud/telegram",
+    "description": "tdlib json操作库",
     "type": "library",
     "license": "MIT",
     "authors": [
@@ -10,28 +11,11 @@
     ],
     "require": {
         "aurimasniekis/ffi-tdlib": "1.0.0",
-        "aurimasniekis/tdlib-schema": "1.6.0"
+        "plugin-cloud/tdlib-schema": "1.6.0"
     },
-    "repositories": [
-        {
-            "type": "package",
-            "package": {
-                "name": "aurimasniekis/tdlib-schema",
-                "version": "v1.6.0",
-                "source": {
-                    "url": "https://github.com/PluginCloud/tdlib-schema.git",
-                    "type": "git",
-                    "reference": "3875657"
-                }
-            }
-        }
-    ],
     "autoload": {
         "psr-4": {
-            "PluginCloud\\Telegram\\": "src"
-        },
-        "classmap": [
-            "src/"
-        ]
+            "PluginCloud\\Telegram\\": "src/"
+        }
     }
 }
