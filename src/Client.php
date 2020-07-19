@@ -6,11 +6,10 @@ namespace PluginCloud\Telegram;
 
 use AurimasNiekis\FFI\TdLib;
 use AurimasNiekis\TdLibSchema\AddProxy;
-use AurimasNiekis\TdLibSchema\AuthorizationStateWaitEncryptionKey;
-use AurimasNiekis\TdLibSchema\AuthorizationStateWaitTdlibParameters;
 use AurimasNiekis\TdLibSchema\CheckAuthenticationBotToken;
 use AurimasNiekis\TdLibSchema\CheckAuthenticationCode;
 use AurimasNiekis\TdLibSchema\CheckDatabaseEncryptionKey;
+use AurimasNiekis\TdLibSchema\Error;
 use AurimasNiekis\TdLibSchema\GetMe;
 use AurimasNiekis\TdLibSchema\Ok;
 use AurimasNiekis\TdLibSchema\PhoneNumberAuthenticationSettings;
@@ -20,12 +19,13 @@ use AurimasNiekis\TdLibSchema\ProxyTypeMtproto;
 use AurimasNiekis\TdLibSchema\ProxyTypeSocks5;
 use AurimasNiekis\TdLibSchema\SetAuthenticationPhoneNumber;
 use AurimasNiekis\TdLibSchema\SetDatabaseEncryptionKey;
+use AurimasNiekis\TdLibSchema\SetLogVerbosityLevel;
 use AurimasNiekis\TdLibSchema\SetTdlibParameters;
 use AurimasNiekis\TdLibSchema\TdFunction;
 use AurimasNiekis\TdLibSchema\TdObject;
 use AurimasNiekis\TdLibSchema\TdSchemaRegistry;
 use AurimasNiekis\TdLibSchema\UpdateAuthorizationState;
-use AurimasNiekis\TdLibSchema\UpdateUser;
+use AurimasNiekis\TdLibSchema\User;
 
 class Client
 {
@@ -36,11 +36,8 @@ class Client
     private Parameter $parameter;
     private string $encryption_key;
 
-    private bool $first_init = true;
-
     public function __construct()
     {
-        $this->lib = new TdLib();
         try {
             $this->encryption_key = base64_encode(random_bytes(32));
         } catch (\Exception $e) {
@@ -56,6 +53,7 @@ class Client
     {
         $this->lib_path = $lib_path;
         $this->lib = new TdLib($this->lib_path);
+        $this->lib->execute(new SetLogVerbosityLevel(1));
         return $this;
     }
 
@@ -68,9 +66,7 @@ class Client
     {
         $this->parameter = $parameter;
         $dbFilePath = implode(DIRECTORY_SEPARATOR, [$parameter->databaseDirectory, "db.sqlite"]);
-        if (file_exists($dbFilePath)) {
-            $this->first_init = false;
-        }
+        $this->sync_send(new SetTdlibParameters($this->parameter), Ok::class);
         return $this;
     }
 
@@ -82,33 +78,9 @@ class Client
     public function setEncryptionKey(string $encryption_key): Client
     {
         $this->encryption_key = $encryption_key;
+        $this->sync_send(new CheckDatabaseEncryptionKey($this->encryption_key), Ok::class);
+        $this->sync_send(new SetDatabaseEncryptionKey($this->encryption_key), Ok::class);
         return $this;
-    }
-
-    /**
-     * 授权
-     * @return TdObject
-     * @throws \JsonException
-     */
-    public function authorizationState()
-    {
-        $waitTdlibParameters = $this->wait_receive_by_class(UpdateAuthorizationState::class);
-        if ($waitTdlibParameters->getAuthorizationState() instanceof AuthorizationStateWaitTdlibParameters) {
-            $waitEncryption = $this->sync_send(new SetTdlibParameters($this->parameter));
-            if ($this->wait_receive_by_class(Ok::class, $waitEncryption)) {
-                if ($waitEncryption->getAuthorizationState() instanceof AuthorizationStateWaitEncryptionKey) {
-                    $checkEncryptionResponse = $this->sync_send(new CheckDatabaseEncryptionKey($this->encryption_key));
-                    if ($this->wait_receive_by_class(Ok::class, $checkEncryptionResponse)) {
-                        $setEncryptionResponse = $this->sync_send(new SetDatabaseEncryptionKey($this->encryption_key));
-                        if ($this->wait_receive_by_class(Ok::class, $setEncryptionResponse)) {
-                            return $setEncryptionResponse;
-                        }
-                    }
-                    return $checkEncryptionResponse;
-                }
-            }
-            return $waitEncryption;
-        }
     }
 
     /**
@@ -120,7 +92,6 @@ class Client
      * @param string $password Http密码
      * @param bool $httpOnly 仅支持HTTP请求且不支持通过HTTP CONNECT方法的透明TCP连接，则传递true
      * @return TdObject
-     * @throws \JsonException
      */
     public function addHttpProxy(
         string $host, int $port = 80, bool $enable = true,
@@ -138,7 +109,6 @@ class Client
      * @param string $username Socket5用户名
      * @param string $password Socket5密码
      * @return TdObject
-     * @throws \JsonException
      */
     public function addSocket5Proxy(
         string $host, int $port = 80, bool $enable = true,
@@ -155,7 +125,6 @@ class Client
      * @param bool $enable 设置的同时开启代理
      * @param string $secret Mtproto的秘钥
      * @return TdObject
-     * @throws \JsonException
      */
     public function addMtprotoProxy(
         string $host, int $port = 80, bool $enable = true, string $secret = "")
@@ -168,7 +137,6 @@ class Client
      * 运行机器人
      * @param string $token 机器人TOKEN
      * @return TdObject
-     * @throws \JsonException
      */
     public function loginByBot(string $token)
     {
@@ -189,20 +157,9 @@ class Client
     }
 
     /**
-     * 获取当前登录账户的信息
-     * @return TdObject
-     * @throws \JsonException
-     */
-    public function getMe()
-    {
-        return $this->sync_send(new GetMe(), UpdateUser::class);
-    }
-
-    /**
      * 接受数据
      * @param int $timeout
      * @return TdObject
-     * @throws \JsonException
      */
     public function receive(int $timeout = self::RECEIVE_TIMEOUT)
     {
@@ -211,33 +168,17 @@ class Client
             return $this->receive($timeout);
         }
 
-        return TdSchemaRegistry::fromArray($response);
-    }
-
-    /**
-     * @param string $className 等待的类名
-     * @param TdObject|null $response 响应的类
-     * @return TdObject
-     * @throws \JsonException
-     */
-    public function wait_receive_by_class(string $className, TdObject $response = null)
-    {
-        if (!is_null($response) && $className === get_class($response)) {
-            return $response;
+        $response = TdSchemaRegistry::fromArray($response);
+        if ($response instanceof Error) {
+            dump($response);die;
         }
-        while (true) {
-            $response = $this->receive();
-            if ($className === get_class($response)) {
-                return $response;
-            }
-        }
+        return $response;
     }
 
     /**
      * @param TdFunction $request 请求的类
      * @param string|null $wait_class 需要返回的类名称
      * @return TdObject
-     * @throws \JsonException
      */
     public function sync_send(TdFunction $request, string $wait_class = null)
     {
@@ -249,18 +190,10 @@ class Client
 
         while (true) {
             $response = $this->receive();
-            dump($response);
+
             if (get_class($response) === $wait_class) {
                 return $response;
             }
         }
-    }
-
-    /**
-     * @return bool
-     */
-    public function isFirstInit(): bool
-    {
-        return $this->first_init;
     }
 }
