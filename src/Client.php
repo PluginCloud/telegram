@@ -190,6 +190,7 @@ class Client
 
         while (true) {
             $response = $this->receive();
+            dump($response);
 
             if (get_class($response) === $wait_class) {
                 return $response;
